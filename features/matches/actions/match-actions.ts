@@ -2,6 +2,7 @@
 
 import { auth0 } from "@/lib/auth0";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import {
   insertMatch,
   updateMatchStatus,
@@ -104,15 +105,19 @@ export async function completeMatch(
     comment: comment?.trim() || null,
   });
 
-  // Fire notifications (non-blocking)
+  // Fire notifications after the response is sent. `after()` keeps the serverless
+  // function alive until the work finishes — a bare un-awaited promise gets frozen
+  // as soon as the action returns, so messages were dropped intermittently.
   if (match?.groupId) {
+    const groupId = match.groupId;
     console.log(
-      `[completeMatch] matchId=${matchId} groupId=${match.groupId} duration=${finalDuration} — dispatching notifications`,
+      `[completeMatch] matchId=${matchId} groupId=${groupId} duration=${finalDuration} — dispatching notifications`,
     );
-    fireMatchNotifications(matchId, match.groupId, finalDuration, comment?.trim() || null)
-      .catch((err) =>
-        console.error(`[completeMatch] matchId=${matchId} groupId=${match.groupId} notification dispatch error:`, err),
-      );
+    after(() =>
+      fireMatchNotifications(matchId, groupId, finalDuration, comment?.trim() || null).catch((err) =>
+        console.error(`[completeMatch] matchId=${matchId} groupId=${groupId} notification dispatch error:`, err),
+      ),
+    );
   } else {
     console.warn(`[completeMatch] matchId=${matchId} has no groupId — skipping notification dispatch`);
   }
